@@ -1,0 +1,153 @@
+# More examples of Codefresh YAML can be found at
+# https://codefresh.io/docs/docs/yaml-examples/examples/
+
+version: "1.0"
+# Stages can help you organize your steps in stages
+stages:
+  - "clone"
+  - "build"
+  - "test"
+  - "push"
+
+steps:
+  clone:
+    title: "Cloning repository"
+    type: "git-clone"
+    repo: "${{CF_REPO_OWNER}}/${{CF_REPO_NAME}}"
+    revision: "${{CF_BRANCH}}"
+    git: "github"
+    stage: "clone"
+
+  build:
+    type: build
+    stage: build
+    tag: "${{CF_BRANCH_TAG_NORMALIZED}}"
+    dockerfile: "Dockerfile"
+    disable_push: false
+    registry: docker-lr
+    scale:
+      build_vote:
+        title: "Building Docker image for vote service"
+        image_name: "lrochette/vote"
+        working_directory: "${{clone}}/vote"
+      build_result:
+        title: "Building Docker image for result service"
+        image_name: "lrochette/result"
+        working_directory: "${{clone}}/result"
+      build_worker:
+        title: "Building Docker image for worker service"
+        image_name: "lrochette/worker"
+        working_directory: "${{clone}}/worker"
+
+  # test:
+  #   title: "Running test"
+  #   type: "freestyle"
+  #   image: "curlimages/curl"
+  #   fail_fast: false
+  #   working_directory: "${{clone}}" # Running command where code cloned
+  #   commands:
+  #     - curl vote_service:80
+  #     - exit 0
+  #   stage: "test"
+  #   services:
+  #     composition:
+  #       vote_service:
+  #         image: "${{build_vote}}"
+  #         ports:
+  #           - 80
+  #     readiness:
+  #       image: "curlimages/curl"
+  #       timeoutSeconds: 30
+  #       commands:
+  #         - curl vote_service:80
+  # export:
+  #   title: "Export variable"
+  #   type: "freestyle"
+  #   image: "alpine:latest"
+  #   stage: test
+  #   commands:
+  #     # - echo ${{valueUpdated}}
+  #     - export ARTIFACT_NAME=appsync-graphql-api-k6_verify_72523dd
+  #     - export YARN_CACHE_FOLDER=/codefresh/volumes/yarn-cache
+  #     - cf_export valueUpdated=true YARN_CACHE_FOLDER=$YARN_CACHE_FOLDER  ARTIFACT_NAME=$ARTIFACT_NAME
+  #     - cat /codefresh/volume/cf_export
+#   check:
+#     title: "Check variable value"
+#     type: "freestyle"
+#     image: "alpine:latest"
+#     stage: test
+#     commands:
+#       - echo ${{valueUpdated}}
+#       - cat ${{CF_VOLUME_PATH}}/env_vars_to_export
+
+  # wait-approval:
+  #   title: "Wait for approval"
+  #   type: "pending-approval"
+  #   stage: push
+  #   timeout:
+  #     duration: 1
+  #     finalState: denied
+  #
+  # approver:
+  #   title: "Check approver"
+  #   type: "freestyle"
+  #   image: "alpine:latest"
+  #   stage: "push"
+  #   commands:
+  #     - echo ${{steps.wait-approval.result}}
+  #     - echo ${{steps.wait-approval.name}}
+  #     - echo ${{steps.wait-approval.status}}
+  #     - echo ${{steps.wait-approval.authEntity.name}}
+
+  # push_ecr:
+  #   type: push
+  #   title: push vote to ecr
+  #   stage: push
+  #   provider: 'ecr'
+  #   region: 'us-east-1'
+  #   registry: ecr-support
+  #   accessKeyId: '${{ACCESS_KEY}}'
+  #   secretAccessKey: '${{SECRET_KEY}}'
+  #   tag: "${{CF_BRANCH_TAG_NORMALIZED}}"
+  #   candidate: ${{build_vote}}
+  #   image_name: "lrochette/vote"
+  # push_gcr:
+  #   type: push
+  #   title: push vote to Google
+  #   stage: push
+  #   registry: gcr
+  #   tag: "${{CF_BRANCH_TAG_NORMALIZED}}"
+  #   candidate: ${{build_vote}}
+  #   image_name: "lrochette/vote"
+  push:
+    type: push
+    tag: "${{CF_BRANCH_TAG_NORMALIZED}}"
+    registry: 'docker-lr'
+    stage: "push"
+    # when:
+    #     condition:
+    #       any:
+    #         testPass: steps.test.result === 'success'
+    scale:
+      push_vote:
+        title: "Pushing vote image"
+        candidate: ${{build_vote}}
+        image_name: "lrochette/vote"
+      push_worker:
+        title: "Pushing worker image"
+        candidate: ${{build_worker}}
+        image_name: "lrochette/worker"
+      push_result:
+        title: "Pushing result image"
+        candidate: ${{build_result}}
+        image_name: "lrochette/result"
+
+  # sync_and_wait:
+  #   type: argocd-sync
+  #   stage: "deploy"
+  #   title: Sync ArgoCD
+  #   working_directory: ${{clone}}/argocd
+  #   arguments:
+  #     context: "argocd"
+  #     app_name: "voting"
+  #     wait_healthy: true
